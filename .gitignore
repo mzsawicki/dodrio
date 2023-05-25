@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+# ROMs
+*.gb
+
+# IDE
+.idea/
+
+# CMake builds
+cmake-build*/
