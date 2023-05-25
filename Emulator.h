@@ -1,4 +1,5 @@
 #pragma once
+#include <bitset>
 #include <memory>
 #include <vector>
 #include "BaseTypes.h"
@@ -21,7 +22,8 @@ namespace emu
               programCounter(),
               stackPointer(),
               memory(),
-              RAMBanks()
+              RAMBanks(),
+              bankMode()
         {
             this->reset();
         }
@@ -80,6 +82,8 @@ namespace emu
             this->memory[0xFF4A] = 0x00;
             this->memory[0xFF4B] = 0x00;
             this->memory[0xFFFF] = 0x00;
+
+            this->bankMode = this->cartridge->detectBankMode();
         }
 
         void performUpdateLoop()
@@ -174,24 +178,21 @@ namespace emu
 
         void handleRAMEnabling(const mem::addr &address, const emu::byte &data)
         {
-            auto bankMode = this->detectBankMode();
-            if (bankMode == BankMode::MBC1 || bankMode == BankMode::MBC2) {
-                this->enableRAMBank(address, data);
+            if (this->bankMode == BankMode::MBC1 || this->bankMode == BankMode::MBC2) {
+                this->switchRAMBanking(address, data);
             }
         }
 
         void handleROMBankChange(const mem::addr &address, const emu::byte &data)
         {
-            auto bankMode = this->detectBankMode();
-            if (bankMode == BankMode::MBC1 || bankMode == BankMode::MBC2) {
+            if (this->bankMode == BankMode::MBC1 || this->bankMode == BankMode::MBC2) {
                 this->changeLoROMBank(address, data);
             }
         }
 
         void handleROMOrRAMBankChange(const mem::addr &address, const emu::byte &data)
         {
-            auto bankMode = this->detectBankMode();
-            if (bankMode == BankMode::MBC1) {
+            if (this->bankMode == BankMode::MBC1) {
                 if (this->ROMBankingEnabled) {
                     this->changeHiROMBank(address, data);
                 }
@@ -201,29 +202,63 @@ namespace emu
             }
         }
 
-        void enableRAMBank(const mem::addr &address, const emu::byte &data)
+        void switchRAMBanking(const mem::addr &address, const emu::byte &data)
         {
-
+            if (this->bankMode == BankMode::MBC2) {
+                std::bitset<16> address_bits(address);
+                if (address_bits[4] == 1) {
+                    return;
+                }
+            }
+            emu::byte data_lower_nibble = data & 0xF;
+            if (data_lower_nibble == 0xA) {
+                this->RAMBankingEnabled = true;
+            }
+            else if (data_lower_nibble == 0x0) {
+                this->RAMBankingEnabled = false;
+            }
         }
 
         void changeLoROMBank(const mem::addr &address, const emu::byte &data)
         {
-
+            if (this->bankMode == BankMode::MBC2) {
+                this->currentROMBank = data & 0xF;
+                if (this->currentROMBank == 0) {
+                    this->currentROMBank++;
+                }
+            }
+            else {
+                emu::byte lower_5_bits = data & 31;
+                this->currentROMBank &= 224;
+                this->currentROMBank |= lower_5_bits;
+                if (this->currentROMBank == 0) {
+                    this->currentROMBank++;
+                }
+            }
         }
 
         void changeHiROMBank(const mem::addr &address, const emu::byte &data)
         {
-
+            this->currentROMBank &= 31;
+            auto data_tmp = data & 224;
+            this->currentROMBank |= data_tmp;
+            if (this->currentROMBank == 0) {
+                this->currentROMBank++;
+            }
         }
 
         void changeRAMBank(const mem::addr &address, const emu::byte &data)
         {
-
+            this->currentRAMBank = data & 0x3;
         }
 
         void changeROMRAMMode(const mem::addr &address, const emu::byte &data)
         {
-
+            emu::byte data_tmp = data & 0x1;
+            this->ROMBankingEnabled = data_tmp == 0;
+            if (this->ROMBankingEnabled) {
+                this->currentRAMBank = 0;
+            }
         }
 
         void writeToRAMBank(const mem::addr &address, const emu::byte &data)
@@ -251,11 +286,6 @@ namespace emu
             auto opcode = this->cartridge->read(this->programCounter);
         }
 
-        [[nodiscard]] BankMode detectBankMode() const
-        {
-            return this->cartridge->detectBankMode();
-        }
-
         std::unique_ptr<emu::Cartridge> cartridge;
 
         emu::byte screen[144][160][3];
@@ -267,6 +297,8 @@ namespace emu
 
         emu::word programCounter;
         emu::Register stackPointer; // Emulated as a register because some opcodes might use hi and lo bytes separately
+
+        BankMode bankMode;
 
         bool ROMBankingEnabled = true;
         emu::byte currentROMBank = 1;
