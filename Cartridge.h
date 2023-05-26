@@ -55,11 +55,6 @@ namespace emu
             }
         }
 
-        [[nodiscard]] emu::byte detectRAMBanksCount() const
-        {
-            return this->read(Cartridge::RAM_BANKS_COUNT_ADDRESS);
-        }
-
         [[nodiscard]] emu::byte read(emu::word address) const
         {
             return this->memory[address];
@@ -71,7 +66,6 @@ namespace emu
         constexpr static char FILE_CANNOT_BE_ACCESSED[] = "Game file cannot be accessed.";
 
         static constexpr emu::word BANK_MODE_ADDRESS = 0x147;
-        static constexpr emu::word RAM_BANKS_COUNT_ADDRESS = 0x148;
 
         emu::byte memory[MEMORY_SIZE] = { 0 };
     };

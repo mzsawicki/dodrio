@@ -12,7 +12,7 @@ namespace emu
     class Emulator
     {
     public:
-        explicit Emulator(std::unique_ptr<Cartridge> cartridge, int clockFrequency)
+        Emulator(std::unique_ptr<Cartridge> cartridge, int clockFrequency)
             : cartridge(std::move(cartridge)),
               screen(),
               af(),
