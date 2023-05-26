@@ -12,7 +12,7 @@ namespace emu
     class Emulator
     {
     public:
-        explicit Emulator(std::unique_ptr<Cartridge> cartridge)
+        explicit Emulator(std::unique_ptr<Cartridge> cartridge, int clockFrequency)
             : cartridge(std::move(cartridge)),
               screen(),
               af(),
@@ -23,7 +23,10 @@ namespace emu
               stackPointer(),
               memory(),
               RAMBanks(),
-              bankMode()
+              bankMode(),
+              timerCounter(Emulator::CLOCK_SPEED / clockFrequency),
+              clockFrequency(clockFrequency)
+
         {
             this->reset();
         }
@@ -159,13 +162,13 @@ namespace emu
                 this->handleRAMEnabling(address, data);
             }
             else if (mem::isROMBankChange(address)) {
-                this->handleROMBankChange(address, data);
+                this->handleROMBankChange(data);
             }
             else if (mem::isROMOrRAMBankChange(address)) {
-                this->handleROMOrRAMBankChange(address, data);
+                this->handleROMOrRAMBankChange(data);
             }
             else if (mem::isROMRAMModeChange(address)) {
-                this->changeROMRAMMode(address, data);
+                this->changeROMRAMMode(data);
             }
         }
 
@@ -183,21 +186,21 @@ namespace emu
             }
         }
 
-        void handleROMBankChange(const mem::addr &address, const emu::byte &data)
+        void handleROMBankChange(const emu::byte &data)
         {
             if (this->bankMode == BankMode::MBC1 || this->bankMode == BankMode::MBC2) {
-                this->changeLoROMBank(address, data);
+                this->changeLoROMBank(data);
             }
         }
 
-        void handleROMOrRAMBankChange(const mem::addr &address, const emu::byte &data)
+        void handleROMOrRAMBankChange(const emu::byte &data)
         {
             if (this->bankMode == BankMode::MBC1) {
                 if (this->ROMBankingEnabled) {
-                    this->changeHiROMBank(address, data);
+                    this->changeHiROMBank(data);
                 }
                 else {
-                    this->changeRAMBank(address, data);
+                    this->changeRAMBank(data);
                 }
             }
         }
@@ -219,7 +222,7 @@ namespace emu
             }
         }
 
-        void changeLoROMBank(const mem::addr &address, const emu::byte &data)
+        void changeLoROMBank(const emu::byte &data)
         {
             if (this->bankMode == BankMode::MBC2) {
                 this->currentROMBank = data & 0xF;
@@ -237,7 +240,7 @@ namespace emu
             }
         }
 
-        void changeHiROMBank(const mem::addr &address, const emu::byte &data)
+        void changeHiROMBank(const emu::byte &data)
         {
             this->currentROMBank &= 31;
             auto data_tmp = data & 224;
@@ -247,12 +250,12 @@ namespace emu
             }
         }
 
-        void changeRAMBank(const mem::addr &address, const emu::byte &data)
+        void changeRAMBank(const emu::byte &data)
         {
             this->currentRAMBank = data & 0x3;
         }
 
-        void changeROMRAMMode(const mem::addr &address, const emu::byte &data)
+        void changeROMRAMMode(const emu::byte &data)
         {
             emu::byte data_tmp = data & 0x1;
             this->ROMBankingEnabled = data_tmp == 0;
@@ -310,8 +313,16 @@ namespace emu
         emu::byte memory[0x10000];
 
         int currentCycleCount = 0;
+        int timerCounter;
+        int clockFrequency;
 
         static constexpr int MAX_CYCLES = 69905;
+
+        static constexpr mem::addr TIMA = 0xFF05;
+        static constexpr mem::addr TMA = 0xFF06;
+        static constexpr mem::addr TMC = 0xFF07;
+
+        static constexpr int CLOCK_SPEED = 4194304;
 
         static constexpr mem::addr ECHO_RAM_ADDRESS_SUBTRACT = 0x2000;
         static constexpr mem::addr RAM_BANK_SIZE = 0x2000;

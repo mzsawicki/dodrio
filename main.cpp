@@ -6,7 +6,8 @@
 int main() {
     std::unique_ptr<emu::Cartridge> cartridge;
     cartridge->load("pokemon-red.gb");
-    auto emulator = std::make_unique<emu::Emulator>(std::move(cartridge));
+    auto clockFrequency = 4096;
+    auto emulator = std::make_unique<emu::Emulator>(std::move(cartridge), clockFrequency);
     emulator->reset();
 
     return 0;
