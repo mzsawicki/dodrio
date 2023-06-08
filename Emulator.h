@@ -24,9 +24,8 @@ namespace emu
               memory(),
               RAMBanks(),
               bankMode(),
-              timerCounter(Emulator::CLOCK_SPEED / clockFrequency),
-              clockFrequency(clockFrequency)
-
+              clockFrequency(clockFrequency),
+              timerCounter(Emulator::CLOCK_SPEED / clockFrequency)
         {
             this->reset();
         }
@@ -38,10 +37,13 @@ namespace emu
 
         void update()
         {
-            while (this->currentCycleCount < MAX_CYCLES) {
-                break;
+            while (this->currentCycleCount < Emulator::MAX_CYCLES) {
+                int cycles_passed = this->executeNextOpcode();
+                this->currentCycleCount += cycles_passed;
+                this->updateTimers(cycles_passed);
             }
         }
+
     private:
         constexpr void initialize()
         {
@@ -92,6 +94,29 @@ namespace emu
         void performUpdateLoop()
         {
 
+        }
+
+        void updateTimers(int cycles)
+        {
+            this->doDividerRegister(cycles);
+            if (this->isClockEnabled()) {
+                this->handleClock(cycles);
+            }
+        }
+
+        void handleClock(int cycles)
+        {
+            this->timerCounter -= cycles;
+            if (this->timerCounter <= 0) {
+                this->setClockFrequency();
+                if (this->readFromMemory(Emulator::TIMA) == 255) {
+                    this->writeToMemory(Emulator::TIMA, this->readFromMemory(Emulator::TMA));
+                    // Request interrupt
+                }
+                else {
+                    this->writeToMemory(Emulator::TIMA,this->readFromMemory(Emulator::TIMA) + 1);
+                }
+            }
         }
 
         [[nodiscard]] emu::byte readFromMemory(const emu::word &address) const
@@ -148,6 +173,13 @@ namespace emu
             else if (mem::isEcho(address)) {
                 this->writeEcho(address, data);
             }
+            else if (address == Emulator::DIVIDER_REGISTER) {
+                // Trap the divider register
+                this->memory[Emulator::DIVIDER_REGISTER] = 0;
+            }
+            else if (address == Emulator::TMC) {
+                this->handleWriteToTMC(address, data);
+            }
             else if (mem::isNotUsable(address)) {
                 // Don't write there
             }
@@ -202,6 +234,16 @@ namespace emu
                 else {
                     this->changeRAMBank(data);
                 }
+            }
+        }
+
+        void handleWriteToTMC(const mem::addr &address, const emu::byte &data)
+        {
+            auto currentFrequency = this->getClockFrequency();
+            this->memory[Emulator::TMC] = data;
+            auto newFrequency = this->getClockFrequency();
+            if (currentFrequency != newFrequency) {
+                this->setClockFrequency();
             }
         }
 
@@ -284,9 +326,55 @@ namespace emu
             this->memory[address] = data;
         }
 
-        void executeNextOpcode()
+        int executeNextOpcode()
         {
             auto opcode = this->cartridge->read(this->programCounter);
+            return 0;
+        }
+
+        [[nodiscard]] bool isClockEnabled() const
+        {
+            auto tmc_value = this->readFromMemory(Emulator::TMC);
+            std::bitset<3> tcm_bitset(tmc_value);
+            return tcm_bitset[2] == 1;
+        }
+
+        [[nodiscard]] emu::byte getClockFrequency() const
+        {
+            auto tmc_value = this->readFromMemory(Emulator::TMC);
+            return tmc_value & 0x3;
+        }
+
+        void setClockFrequency()
+        {
+            auto frequency = this->getClockFrequency();
+            switch (frequency) {
+                case 0: // 4096
+                    this->timerCounter = 1024;
+                    break;
+                case 1: // 262144
+                    this->timerCounter = 16;
+                    break;
+                case 2: //65536
+                    this->timerCounter = 64;
+                    break;
+                case 3: //16382
+                    this->timerCounter = 256;
+                    break;
+                default: // Shouldn't happen
+                    this->timerCounter = 1024;
+                    break;
+            }
+        }
+
+        void doDividerRegister(int cycles)
+        {
+            this->dividerCounter += cycles;
+            if (this->dividerCounter >= 255)
+            {
+                this->dividerCounter = 0;
+                this->memory[Emulator::DIVIDER_REGISTER]++;
+            }
         }
 
         std::unique_ptr<emu::Cartridge> cartridge;
@@ -316,13 +404,17 @@ namespace emu
         int timerCounter;
         int clockFrequency;
 
-        static constexpr int MAX_CYCLES = 69905;
-
-        static constexpr mem::addr TIMA = 0xFF05;
-        static constexpr mem::addr TMA = 0xFF06;
-        static constexpr mem::addr TMC = 0xFF07;
+        int dividerCounter = 0;
 
         static constexpr int CLOCK_SPEED = 4194304;
+        static constexpr int MAX_CYCLES = 69905;
+
+        static constexpr mem::addr DIVIDER_REGISTER = 0xFF04;
+
+        static constexpr mem::addr TIMA = 0xFF05;   // Timer address
+        static constexpr mem::addr TMA = 0xFF06;    // Timer modulator address (stores address to value to set timer to
+        // after overflow)
+        static constexpr mem::addr TMC = 0xFF07;    // Timer controller address
 
         static constexpr mem::addr ECHO_RAM_ADDRESS_SUBTRACT = 0x2000;
         static constexpr mem::addr RAM_BANK_SIZE = 0x2000;
