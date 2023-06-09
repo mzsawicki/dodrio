@@ -109,12 +109,12 @@ namespace emu
             this->timerCounter -= cycles;
             if (this->timerCounter <= 0) {
                 this->setClockFrequency();
-                if (this->readFromMemory(Emulator::TIMA) == 255) {
-                    this->writeToMemory(Emulator::TIMA, this->readFromMemory(Emulator::TMA));
+                if (this->readFromMemory(mem::TIMA) == 255) {
+                    this->writeToMemory(mem::TIMA, this->readFromMemory(mem::TMA));
                     // Request interrupt
                 }
                 else {
-                    this->writeToMemory(Emulator::TIMA,this->readFromMemory(Emulator::TIMA) + 1);
+                    this->writeToMemory(mem::TIMA,this->readFromMemory(mem::TIMA) + 1);
                 }
             }
         }
@@ -173,11 +173,11 @@ namespace emu
             else if (mem::isEcho(address)) {
                 this->writeEcho(address, data);
             }
-            else if (address == Emulator::DIVIDER_REGISTER) {
+            else if (address == mem::DIVIDER_REGISTER) {
                 // Trap the divider register
-                this->memory[Emulator::DIVIDER_REGISTER] = 0;
+                this->memory[mem::DIVIDER_REGISTER] = 0;
             }
-            else if (address == Emulator::TMC) {
+            else if (address == mem::TMC) {
                 this->handleWriteToTMC(address, data);
             }
             else if (mem::isNotUsable(address)) {
@@ -240,7 +240,7 @@ namespace emu
         void handleWriteToTMC(const mem::addr &address, const emu::byte &data)
         {
             auto currentFrequency = this->getClockFrequency();
-            this->memory[Emulator::TMC] = data;
+            this->memory[mem::TMC] = data;
             auto newFrequency = this->getClockFrequency();
             if (currentFrequency != newFrequency) {
                 this->setClockFrequency();
@@ -334,14 +334,14 @@ namespace emu
 
         [[nodiscard]] bool isClockEnabled() const
         {
-            auto tmc_value = this->readFromMemory(Emulator::TMC);
+            auto tmc_value = this->readFromMemory(mem::TMC);
             std::bitset<3> tcm_bitset(tmc_value);
             return tcm_bitset[2] == 1;
         }
 
         [[nodiscard]] emu::byte getClockFrequency() const
         {
-            auto tmc_value = this->readFromMemory(Emulator::TMC);
+            auto tmc_value = this->readFromMemory(mem::TMC);
             return tmc_value & 0x3;
         }
 
@@ -373,7 +373,7 @@ namespace emu
             if (this->dividerCounter >= 255)
             {
                 this->dividerCounter = 0;
-                this->memory[Emulator::DIVIDER_REGISTER]++;
+                this->memory[mem::DIVIDER_REGISTER]++;
             }
         }
 
@@ -408,13 +408,6 @@ namespace emu
 
         static constexpr int CLOCK_SPEED = 4194304;
         static constexpr int MAX_CYCLES = 69905;
-
-        static constexpr mem::addr DIVIDER_REGISTER = 0xFF04;
-
-        static constexpr mem::addr TIMA = 0xFF05;   // Timer address
-        static constexpr mem::addr TMA = 0xFF06;    // Timer modulator address (stores address to value to set timer to
-        // after overflow)
-        static constexpr mem::addr TMC = 0xFF07;    // Timer controller address
 
         static constexpr mem::addr ECHO_RAM_ADDRESS_SUBTRACT = 0x2000;
         static constexpr mem::addr RAM_BANK_SIZE = 0x2000;
